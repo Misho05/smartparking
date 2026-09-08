@@ -1,0 +1,102 @@
+import { EmployeeRecord, PaidCustomerRecord, ParkingTicket } from '../types';
+
+export const initialEmployees: EmployeeRecord[] = [
+  {
+    id: 'emp-1',
+    plateNumber: 'EMP-777-GE',
+    fullName: 'დავით კობახიძე',
+    department: 'დირექტორატი / მენეჯმენტი',
+    phone: '+995 599 11 22 33',
+    addedAt: '2025-01-10',
+  },
+  {
+    id: 'emp-2',
+    plateNumber: 'AA-100-BB',
+    fullName: 'ნინო ბერიძე',
+    department: 'ფინანსური განყოფილება',
+    phone: '+995 577 44 55 66',
+    addedAt: '2025-02-01',
+  },
+  {
+    id: 'emp-3',
+    plateNumber: 'TB-001-ST',
+    fullName: 'გიორგი ჩხეიძე',
+    department: 'IT & უსაფრთხოება',
+    phone: '+995 595 77 88 99',
+    addedAt: '2025-02-15',
+  },
+];
+
+export const initialPaidCustomers: PaidCustomerRecord[] = [
+  {
+    id: 'paid-1',
+    plateNumber: 'GE-482-TB',
+    driverName: 'ლევან მაისურაძე',
+    phone: '+995 591 00 11 22',
+    validUntil: new Date(Date.now() + 3 * 3600000).toISOString(),
+    amountPaid: 9.0,
+    status: 'active',
+  },
+  {
+    id: 'paid-2',
+    plateNumber: 'VIP-999-GE',
+    driverName: 'ანნა კალანდაძე',
+    phone: '+995 593 33 44 55',
+    validUntil: new Date(Date.now() + 1.5 * 3600000).toISOString(),
+    amountPaid: 6.0,
+    status: 'active',
+  },
+];
+
+export const initialTickets: ParkingTicket[] = [
+  {
+    ticketId: 'TKT-849201',
+    barcode: '894849201',
+    plateNumber: 'GE-482-TB',
+    driverFullName: 'ლევან მაისურაძე',
+    driverPhone: '+995 591 00 11 22',
+    spotId: 'B',
+    entryTime: new Date(Date.now() - 45 * 60000).toISOString(),
+    status: 'active',
+    staffOperatorName: 'თანამშრომელი #01 (ადგილზე)',
+    notes: 'შემოსულია ადგილზე ქვითრით',
+    isConfidentialStaffEntry: true,
+  },
+  {
+    ticketId: 'TKT-712403',
+    barcode: '894712403',
+    plateNumber: 'TB-890-XX',
+    driverFullName: 'დავით ჯაფარიძე',
+    driverPhone: '+995 577 88 99 00',
+    spotId: 'B',
+    entryTime: new Date(Date.now() - 140 * 60000).toISOString(),
+    status: 'paid',
+    paidAt: new Date(Date.now() - 10 * 60000).toISOString(),
+    durationMinutes: 130,
+    durationFormatted: '2 სთ 10 წთ',
+    amountDue: 2.0,
+    amountPaid: 2.0,
+    paymentMethod: 'cash',
+    staffOperatorName: 'თანამშრომელი #01 (ადგილზე)',
+    isConfidentialStaffEntry: true,
+  },
+  {
+    ticketId: 'TKT-551980',
+    barcode: '894551980',
+    plateNumber: 'KA-332-GE',
+    driverFullName: 'გიორგი ცინცაძე',
+    driverPhone: '+995 598 44 55 66',
+    spotId: 'B',
+    entryTime: new Date(Date.now() - 500 * 60000).toISOString(),
+    status: 'completed',
+    paidAt: new Date(Date.now() - 320 * 60000).toISOString(),
+    durationMinutes: 180,
+    durationFormatted: '3 სთ 0 წთ',
+    amountDue: 2.0,
+    amountPaid: 2.0,
+    paymentMethod: 'pos',
+    staffOperatorName: 'თანამშრომელი #02',
+    isConfidentialStaffEntry: true,
+  },
+];
+

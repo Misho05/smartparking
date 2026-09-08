@@ -1,0 +1,6 @@
+{
+  "name": "SmartPark - პარკინგის დაჯავშნა და მონიტორინგი",
+  "description": "რეალურ დროში თავისუფალი პარკინგის ადგილების ნახვა, წინასწარი დაჯავშნა და გადახდა ციფრული ბილეთით.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
