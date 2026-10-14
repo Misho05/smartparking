@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { Reservation, EmployeeRecord, PaidCustomerRecord, Language } from '../types';
 import { translations } from '../utils/translations';
-import { OFFICIAL_PRICING_TIERS } from '../utils/pricing';
+import { lookupDriverByPlate } from '../utils/driverDirectory';
 
 interface GateSimulatorModalProps {
   isOpen: boolean;
@@ -36,6 +36,7 @@ interface GateSimulatorModalProps {
     details: { driverName?: string; expiresAt?: string; bookingId?: string }
   ) => boolean;
   onStartBookingForPlate: (plateNumber: string) => void;
+  initialPlate?: string;
   lang: Language;
 }
 
@@ -49,12 +50,12 @@ export const GateSimulatorModal: React.FC<GateSimulatorModalProps> = ({
   onOpenStaffTerminal,
   onSimulateCarArrival,
   onStartBookingForPlate,
+  initialPlate,
   lang,
 }) => {
-  if (!isOpen) return null;
   const t = translations[lang];
 
-  const [inputPlate, setInputPlate] = useState('EMP-777-GE');
+  const [inputPlate, setInputPlate] = useState(initialPlate || 'EMP-777-GE');
   const [gateStatus, setGateStatus] = useState<'idle' | 'scanning' | 'granted' | 'denied'>('idle');
   const [gateMessage, setGateMessage] = useState('');
   const [classificationResult, setClassificationResult] = useState<{
@@ -130,7 +131,29 @@ export const GateSimulatorModal: React.FC<GateSimulatorModalProps> = ({
         return;
       }
 
-      // 4. Unregistered / Unknown Plate
+      // 4. Check in Driver Profile Directory (Auto-Lookup by Plate)
+      const matchedProfile = lookupDriverByPlate(targetPlate);
+      if (matchedProfile) {
+        const isEmployee = matchedProfile.category === 'employee';
+        const spotTarget = isEmployee ? 'A' : 'B';
+        setGateStatus('granted');
+        setGateMessage(`ამოცნობილია! ${matchedProfile.fullName} (${isEmployee ? 'A პარკინგი' : 'B პარკინგი'})`);
+        setClassificationResult({
+          type: isEmployee ? 'employee' : 'paid',
+          spot: spotTarget,
+          title: `რეგისტრირებული პროფილი • ${matchedProfile.fullName}`,
+          details: `ნომერი: ${matchedProfile.plateNumber} ${matchedProfile.phone ? `• ტელ: ${matchedProfile.phone}` : ''} • ავტომატურად ამოგდებულია ბაზიდან`,
+          priceInfo: isEmployee ? 'სამსახურებრივი საშვი' : 'ტარიფი: 1 სთ = 1.00 ₾ | 3 სთ = 2.00 ₾ | 24 სთ = 5.00 ₾',
+        });
+
+        onSimulateCarArrival(targetPlate, isEmployee ? 'employee' : 'paid', {
+          driverName: matchedProfile.fullName,
+          expiresAt: new Date(Date.now() + 4 * 3600000).toISOString(),
+        });
+        return;
+      }
+
+      // 5. Unregistered / Unknown Plate
       setGateStatus('denied');
       setGateMessage('ნომერი ვერ მოიძებნა ბაზაში. შლაგბაუმი დახურულია.');
       setClassificationResult({
@@ -148,6 +171,8 @@ export const GateSimulatorModal: React.FC<GateSimulatorModalProps> = ({
     setGateMessage('');
     setClassificationResult(null);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">

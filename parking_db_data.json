@@ -1,0 +1,164 @@
+{
+  "spots": [
+    {
+      "id": "A",
+      "name": "A ადგილი — თანამშრომლების",
+      "zoneName": "ზონა A (სამსახურებრივი)",
+      "number": 1,
+      "type": "employee",
+      "status": "available",
+      "pricePerHour": 0,
+      "features": [
+        "უფასო თანამშრომლებისთვის",
+        "ANPR ავტო-ამოცნობა",
+        "ავტომატური შლაგბაუმი"
+      ],
+      "isEmployeeOnly": true,
+      "floor": 1
+    },
+    {
+      "id": "B",
+      "name": "B ადგილი — ფასიანი / კლიენტების",
+      "zoneName": "ზონა B (ფასიანი)",
+      "number": 2,
+      "type": "paid",
+      "status": "available",
+      "pricePerHour": 1,
+      "features": [
+        "1სთ = 1.00 ₾",
+        "3სთ = 2.00 ₾ (პოპულარული)",
+        "24სთ = 5.00 ₾",
+        "ონლაინ დაჯავშნა",
+        "ადგილზე სალარო"
+      ],
+      "floor": 1
+    }
+  ],
+  "employees": [
+    {
+      "id": "emp-1",
+      "plateNumber": "EMP-777-GE",
+      "fullName": "დავით კობახიძე",
+      "department": "დირექტორატი / მენეჯმენტი",
+      "phone": "+995 599 11 22 33",
+      "addedAt": "2025-01-10"
+    },
+    {
+      "id": "emp-2",
+      "plateNumber": "AA-100-BB",
+      "fullName": "ნინო ბერიძე",
+      "department": "ფინანსური განყოფილება",
+      "phone": "+995 577 44 55 66",
+      "addedAt": "2025-02-01"
+    },
+    {
+      "id": "emp-3",
+      "plateNumber": "TB-001-ST",
+      "fullName": "გიორგი ჩხეიძე",
+      "department": "IT & უსაფრთხოება",
+      "phone": "+995 595 77 88 99",
+      "addedAt": "2025-02-15"
+    }
+  ],
+  "paidCustomers": [
+    {
+      "id": "paid-1",
+      "plateNumber": "GE-482-TB",
+      "driverName": "ლევან მაისურაძე",
+      "phone": "+995 591 00 11 22",
+      "validUntil": "2026-10-11T21:15:49.038Z",
+      "amountPaid": 2,
+      "status": "active"
+    },
+    {
+      "id": "paid-2",
+      "plateNumber": "VIP-999-GE",
+      "driverName": "ანნა კალანდაძე",
+      "phone": "+995 593 33 44 55",
+      "validUntil": "2026-10-12T18:15:49.039Z",
+      "amountPaid": 5,
+      "status": "active"
+    },
+    {
+      "id": "paid-3",
+      "plateNumber": "TB-890-XX",
+      "driverName": "დავით ჯაფარიძე",
+      "phone": "+995 577 88 99 00",
+      "validUntil": "2026-10-11T18:05:49.039Z",
+      "amountPaid": 2,
+      "status": "completed"
+    }
+  ],
+  "tickets": [
+    {
+      "ticketId": "TKT-849201",
+      "barcode": "894849201",
+      "plateNumber": "GE-482-TB",
+      "driverFullName": "ლევან მაისურაძე",
+      "driverPhone": "+995 591 00 11 22",
+      "spotId": "B",
+      "entryTime": "2026-10-11T17:30:49.039Z",
+      "status": "active",
+      "staffOperatorName": "ადმინისტრატორი",
+      "notes": "ადგილზე გაცემული ქვითარი"
+    },
+    {
+      "ticketId": "TKT-712403",
+      "barcode": "894712403",
+      "plateNumber": "TB-890-XX",
+      "driverFullName": "დავით ჯაფარიძე",
+      "driverPhone": "+995 577 88 99 00",
+      "spotId": "B",
+      "entryTime": "2026-10-11T15:55:49.039Z",
+      "exitTime": "2026-10-11T18:05:49.039Z",
+      "status": "completed",
+      "paidAt": "2026-10-11T18:05:49.039Z",
+      "durationFormatted": "2 სთ 10 წთ",
+      "amountDue": 2,
+      "amountPaid": 2,
+      "paymentMethod": "cash",
+      "staffOperatorName": "ადმინისტრატორი"
+    }
+  ],
+  "reservations": [],
+  "vehicleLogs": [
+    {
+      "id": "log-a-1",
+      "direction": "entry",
+      "spotId": "A",
+      "plateNumber": "EMP-777-GE",
+      "driverName": "დავით კობახიძე (მენეჯმენტი)",
+      "category": "employee",
+      "timestamp": "2026-10-11T17:40:49.039Z",
+      "notes": "სამსახურებრივი საშვი • ANPR ავტომატური დაშვება"
+    },
+    {
+      "id": "log-b-1",
+      "direction": "entry",
+      "spotId": "B",
+      "plateNumber": "GE-482-TB",
+      "driverName": "ლევან მაისურაძე",
+      "category": "paid",
+      "timestamp": "2026-10-11T17:30:49.039Z",
+      "notes": "შესვლა • ბილეთი #TKT-849201"
+    }
+  ],
+  "pricingTiers": [
+    {
+      "hours": 1,
+      "price": 1,
+      "label": "1 საათი"
+    },
+    {
+      "hours": 3,
+      "price": 2,
+      "label": "3 საათი (რეკომენდებული)"
+    },
+    {
+      "hours": 24,
+      "price": 5,
+      "label": "24 საათი (დღიური)"
+    }
+  ],
+  "adminPin": "9999"
+}

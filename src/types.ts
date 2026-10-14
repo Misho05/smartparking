@@ -1,6 +1,19 @@
 export type SpotType = 'paid' | 'employee' | 'standard' | 'ev' | 'accessible' | 'vip';
 export type SpotStatus = 'available' | 'occupied' | 'reserved';
 
+export interface UserAccount {
+  id: string;
+  email: string;
+  password?: string;
+  fullName: string;
+  role: 'admin' | 'employee';
+  phone?: string;
+  department?: string;
+  plateNumber?: string;
+  avatarUrl?: string;
+  createdAt: string;
+}
+
 export interface EmployeeRecord {
   id: string;
   plateNumber: string;
@@ -8,6 +21,10 @@ export interface EmployeeRecord {
   department: string;
   phone: string;
   addedAt: string;
+  email?: string;
+  password?: string;
+  avatarUrl?: string;
+  role?: 'admin' | 'employee';
 }
 
 export interface PaidCustomerRecord {
@@ -110,3 +127,17 @@ export interface ParkingTicket {
 }
 
 export type Language = 'ka' | 'en';
+
+export interface VehicleActivityLog {
+  id: string;
+  direction: 'entry' | 'exit'; // 'entry' = შემოსული (მწვანე), 'exit' = გასული (წითელი/ნარინჯისფერი)
+  spotId: 'A' | 'B';
+  plateNumber: string;
+  driverName?: string;
+  category: 'employee' | 'paid' | 'guest';
+  timestamp: string; // ISO
+  durationFormatted?: string; // e.g. "1 სთ 30 წთ" (for exit)
+  amountPaid?: number; // (for exit if paid)
+  paymentMethod?: string;
+  notes?: string;
+}

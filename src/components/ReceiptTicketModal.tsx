@@ -26,6 +26,8 @@ export const ReceiptTicketModal: React.FC<ReceiptTicketModalProps> = ({
   const isPaid = ticket.status === 'paid' || ticket.status === 'completed';
   const entryDateObj = new Date(ticket.entryTime);
   const formattedEntry = `${entryDateObj.toLocaleDateString('ka-GE')} • ${entryDateObj.toLocaleTimeString('ka-GE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+  const exitDateObj = ticket.exitTime ? new Date(ticket.exitTime) : ticket.paidAt ? new Date(ticket.paidAt) : null;
+  const formattedExit = exitDateObj ? `${exitDateObj.toLocaleDateString('ka-GE')} • ${exitDateObj.toLocaleTimeString('ka-GE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in print:p-0 print:bg-white">
@@ -123,6 +125,13 @@ export const ReceiptTicketModal: React.FC<ReceiptTicketModalProps> = ({
                 <span className="font-bold text-slate-900">{formattedEntry}</span>
               </div>
 
+              {formattedExit && (
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600 font-bold">გასვლის დრო:</span>
+                  <span className="font-bold text-slate-900">{formattedExit}</span>
+                </div>
+              )}
+
               <div className="flex justify-between items-center">
                 <span className="text-slate-600 font-bold">ოპერატორი / სადგური:</span>
                 <span className="text-slate-800">{ticket.staffOperatorName || 'ადგილზე მყოფი თანამშრომელი #01'}</span>
@@ -142,11 +151,15 @@ export const ReceiptTicketModal: React.FC<ReceiptTicketModalProps> = ({
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-slate-600 font-bold">გადახდის მეთოდი:</span>
-                    <span className="uppercase text-slate-800 font-bold">
+                    <span className="text-slate-800 font-bold">
                       {ticket.paymentMethod === 'cash'
-                        ? 'ნაღდი ფული'
+                        ? 'ნაღდი ფული (ქეში)'
+                        : ticket.paymentMethod === 'bog'
+                        ? 'საქართველოს ბანკი (საქ / BOG)'
+                        : ticket.paymentMethod === 'tbc'
+                        ? 'თიბისი ბანკი (თიბისი / TBC)'
                         : ticket.paymentMethod === 'pos' || ticket.paymentMethod === 'card'
-                        ? 'საბანკო ბარათი (POS)'
+                        ? 'საბანკო ბარათი (POS / VISA / MC)'
                         : ticket.paymentMethod}
                     </span>
                   </div>

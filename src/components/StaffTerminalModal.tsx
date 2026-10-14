@@ -30,10 +30,18 @@ import {
   Trash2,
   KeyRound,
   ShieldAlert,
+  Sparkles,
+  Camera,
+  Calendar,
+  History,
+  FileText,
+  Filter,
+  CalendarDays,
 } from 'lucide-react';
 import { ParkingSpot, ParkingTicket, Language } from '../types';
-import { calculateStayDurationAndFee, StayFeeCalculation } from '../utils/pricing';
+import { calculateStayDurationAndFee, StayFeeCalculation, formatPricingSummary } from '../utils/pricing';
 import { BarcodeVisual, QrCodeVisual } from './BarcodeVisual';
+import { lookupDriverByPlate, saveDriverProfile, DriverProfile } from '../utils/driverDirectory';
 import confetti from 'canvas-confetti';
 
 interface StaffTerminalModalProps {
@@ -46,6 +54,9 @@ interface StaffTerminalModalProps {
   onManualOpenBarrierAndFreeSpot: (ticketId: string, spotId: 'A' | 'B') => void;
   onViewPrintReceipt: (ticket: ParkingTicket) => void;
   onDeleteTicket?: (ticketId: string) => void;
+  initialPlate?: string;
+  initialTab?: 'confidential_db' | 'issue' | 'checkout' | 'history';
+  onOpenScannerModal?: () => void;
   lang?: Language;
 }
 
@@ -59,9 +70,10 @@ export const StaffTerminalModal: React.FC<StaffTerminalModalProps> = ({
   onManualOpenBarrierAndFreeSpot,
   onViewPrintReceipt,
   onDeleteTicket,
+  initialPlate,
+  initialTab,
+  onOpenScannerModal,
 }) => {
-  if (!isOpen) return null;
-
   // ================= STAFF ACCESS & SECURITY GATE =================
   // By default, staff is authenticated for convenience, but can be locked or require PIN
   const [isStaffAuthenticated, setIsStaffAuthenticated] = useState<boolean>(() => {
@@ -92,7 +104,23 @@ export const StaffTerminalModal: React.FC<StaffTerminalModalProps> = ({
   // 'confidential_db': 🔒 კონფიდენციალური ბაზა (სახელი, გვარი, ტელეფონი, ნომერი)
   // 'issue': ➕ ახალი მანქანის რეგისტრაცია & ქვითრის გაცემა
   // 'checkout': 💳 გასვლა, გადახდის სალარო & შლაგბაუმი
-  const [activeTab, setActiveTab] = useState<'confidential_db' | 'issue' | 'checkout'>('confidential_db');
+  // 'history': 🧾 გასული ქვითრების არქივი (გუშინდელი და წინა ქვითრები)
+  const [activeTab, setActiveTab] = useState<'confidential_db' | 'issue' | 'checkout' | 'history'>(
+    initialTab || 'confidential_db'
+  );
+
+  useEffect(() => {
+    if (isOpen && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
+
+  // ================= TAB 4: HISTORICAL RECEIPTS (გასული ქვითრების არქივი) =================
+  const [historyDateFilter, setHistoryDateFilter] = useState<'all' | 'yesterday' | 'today' | 'last7days' | 'custom'>('all');
+  const [customHistoryDate, setCustomHistoryDate] = useState<string>('');
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
+  const [historyPaymentFilter, setHistoryPaymentFilter] = useState<'all' | 'cash' | 'bog' | 'tbc' | 'pos'>('all');
+  const [historySpotFilter, setHistorySpotFilter] = useState<'all' | 'A' | 'B'>('all');
 
   // ================= ISSUE TICKET & CONFIDENTIAL DRIVER DATA =================
   const [driverFullName, setDriverFullName] = useState('');
@@ -102,6 +130,26 @@ export const StaffTerminalModal: React.FC<StaffTerminalModalProps> = ({
   const [staffOperatorName, setStaffOperatorName] = useState('თანამშრომელი #01 (ადგილზე)');
   const [issueNotes, setIssueNotes] = useState('');
   const [issueSuccessTicket, setIssueSuccessTicket] = useState<ParkingTicket | null>(null);
+  const [autoMatchedDriver, setAutoMatchedDriver] = useState<DriverProfile | null>(null);
+
+  // Auto-lookup driver when staff types license plate
+  const handlePlateChange = (val: string) => {
+    const uppercaseVal = val.toUpperCase();
+    setNewPlate(uppercaseVal);
+
+    if (uppercaseVal.trim().length >= 3) {
+      const match = lookupDriverByPlate(uppercaseVal);
+      if (match) {
+        setAutoMatchedDriver(match);
+        setDriverFullName(match.fullName);
+        if (match.phone) setDriverPhone(match.phone);
+      } else {
+        setAutoMatchedDriver(null);
+      }
+    } else {
+      setAutoMatchedDriver(null);
+    }
+  };
 
   // ================= CONFIDENTIAL DATABASE FILTER & SEARCH =================
   const [dbSearchQuery, setDbSearchQuery] = useState('');
@@ -130,6 +178,35 @@ export const StaffTerminalModal: React.FC<StaffTerminalModalProps> = ({
       setSelectedTicketForCheckout(activeTickets[0]);
     }
   }, [activeTab, activeTickets, selectedTicketForCheckout]);
+
+  // Handle incoming initialPlate from auto-lookup or camera
+  useEffect(() => {
+    if (isOpen && initialPlate) {
+      const cleanPlate = initialPlate.toUpperCase().trim();
+      setNewPlate(cleanPlate);
+
+      // Check if this plate has an active ticket for checkout
+      const existingTicket = tickets.find(
+        (t) =>
+          (t.status === 'active' || t.status === 'paid') &&
+          t.plateNumber.toUpperCase().replace(/\s|-/g, '') === cleanPlate.replace(/\s|-/g, '')
+      );
+
+      if (existingTicket) {
+        setSelectedTicketForCheckout(existingTicket);
+        setSearchInput(existingTicket.ticketId);
+        setActiveTab('checkout');
+      } else {
+        setActiveTab('issue');
+        const match = lookupDriverByPlate(cleanPlate);
+        if (match) {
+          setAutoMatchedDriver(match);
+          setDriverFullName(match.fullName);
+          if (match.phone) setDriverPhone(match.phone);
+        }
+      }
+    }
+  }, [isOpen, initialPlate, tickets]);
 
   // Handle Search for Barcode / QR / Ticket ID / Plate / Phone
   const handleSearchTicket = (query: string) => {
@@ -190,6 +267,15 @@ export const StaffTerminalModal: React.FC<StaffTerminalModalProps> = ({
       isConfidentialStaffEntry: true,
     };
 
+    // Save driver profile for future automatic popups
+    saveDriverProfile({
+      plateNumber: cleanPlate,
+      fullName: driverFullName.trim() || 'ადგილზე კლიენტი',
+      phone: driverPhone.trim(),
+      category: 'on_site',
+      notes: `ადგილზე ბილეთი #${newTicket.ticketId}`,
+    });
+
     onIssueTicket(newTicket);
     setIssueSuccessTicket(newTicket);
 
@@ -197,6 +283,7 @@ export const StaffTerminalModal: React.FC<StaffTerminalModalProps> = ({
     setDriverFullName('');
     setDriverPhone('');
     setNewPlate('');
+    setAutoMatchedDriver(null);
     setIssueNotes('');
 
     try {
@@ -269,6 +356,68 @@ export const StaffTerminalModal: React.FC<StaffTerminalModalProps> = ({
     const matchId = t.ticketId.toLowerCase().includes(q);
     return Boolean(matchName || matchPhone || matchPlate || matchId);
   });
+
+  // ================= HISTORICAL / PAST COMPLETED TICKETS =================
+  const completedOrPaidTickets = tickets.filter(
+    (t) => t.status === 'completed' || t.status === 'paid'
+  );
+
+  const now = new Date();
+  const todayDateString = now.toISOString().split('T')[0];
+  const yesterdayDateObj = new Date(Date.now() - 24 * 3600000);
+  const yesterdayDateString = yesterdayDateObj.toISOString().split('T')[0];
+
+  const isTicketOnDate = (ticket: ParkingTicket, targetDateStr: string) => {
+    const dates = [ticket.exitTime, ticket.paidAt, ticket.entryTime].filter(Boolean) as string[];
+    return dates.some((d) => d.startsWith(targetDateStr));
+  };
+
+  const filteredHistoricalTickets = completedOrPaidTickets.filter((t) => {
+    // 1. Date filter
+    if (historyDateFilter === 'yesterday') {
+      if (!isTicketOnDate(t, yesterdayDateString)) return false;
+    } else if (historyDateFilter === 'today') {
+      if (!isTicketOnDate(t, todayDateString)) return false;
+    } else if (historyDateFilter === 'last7days') {
+      const ticketTime = new Date(t.exitTime || t.paidAt || t.entryTime).getTime();
+      const diffDays = (Date.now() - ticketTime) / (1000 * 3600 * 24);
+      if (diffDays > 7) return false;
+    } else if (historyDateFilter === 'custom' && customHistoryDate) {
+      if (!isTicketOnDate(t, customHistoryDate)) return false;
+    }
+
+    // 2. Payment method filter
+    if (historyPaymentFilter !== 'all') {
+      if (historyPaymentFilter === 'cash' && t.paymentMethod !== 'cash') return false;
+      if (historyPaymentFilter === 'bog' && t.paymentMethod !== 'bog') return false;
+      if (historyPaymentFilter === 'tbc' && t.paymentMethod !== 'tbc') return false;
+      if (historyPaymentFilter === 'pos' && t.paymentMethod !== 'pos' && t.paymentMethod !== 'card') return false;
+    }
+
+    // 3. Spot filter
+    if (historySpotFilter !== 'all' && t.spotId !== historySpotFilter) {
+      return false;
+    }
+
+    // 4. Search query
+    if (historySearchQuery.trim()) {
+      const q = historySearchQuery.trim().toLowerCase();
+      const matchPlate = t.plateNumber.toLowerCase().includes(q);
+      const matchName = t.driverFullName?.toLowerCase().includes(q);
+      const matchPhone = t.driverPhone?.toLowerCase().includes(q);
+      const matchTicket = t.ticketId.toLowerCase().includes(q);
+      const matchBarcode = t.barcode.toLowerCase().includes(q);
+      return Boolean(matchPlate || matchName || matchPhone || matchTicket || matchBarcode);
+    }
+
+    return true;
+  });
+
+  const yesterdayTicketsCount = completedOrPaidTickets.filter((t) => isTicketOnDate(t, yesterdayDateString)).length;
+  const todayTicketsCount = completedOrPaidTickets.filter((t) => isTicketOnDate(t, todayDateString)).length;
+  const totalHistoricalRevenue = filteredHistoricalTickets.reduce((sum, t) => sum + (t.amountPaid || 0), 0);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-md animate-fade-in overflow-y-auto">
@@ -459,6 +608,34 @@ export const StaffTerminalModal: React.FC<StaffTerminalModalProps> = ({
                 {activeTickets.length > 0 && (
                   <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-mono">
                     {activeTickets.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Tab 4: Past & Historical Receipts Archive (გასული ქვითრები) */}
+              <button
+                id="terminal-tab-history"
+                onClick={() => {
+                  setActiveTab('history');
+                  setIsPaymentJustConfirmed(false);
+                  setIsBarrierOpened(false);
+                }}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all border-b-2 shrink-0 ${
+                  activeTab === 'history'
+                    ? 'bg-slate-900 text-sky-400 border-sky-400 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/50'
+                }`}
+              >
+                <FileText className="w-4 h-4 text-sky-400" />
+                <span>4. 🧾 გასული ქვითრების არქივი (გუშინდელი & ისტორია)</span>
+                {completedOrPaidTickets.length > 0 && (
+                  <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-sky-500/20 text-sky-300 font-mono">
+                    {completedOrPaidTickets.length}
+                  </span>
+                )}
+                {yesterdayTicketsCount > 0 && (
+                  <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] bg-amber-500/20 text-amber-300 font-bold">
+                    გუშინ: {yesterdayTicketsCount}
                   </span>
                 )}
               </button>
@@ -796,7 +973,7 @@ export const StaffTerminalModal: React.FC<StaffTerminalModalProps> = ({
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-300 mt-1">
-                            კლიენტებისთვის • 1სთ=1₾, 3სთ=2₾, 24სთ=5₾
+                            კლიენტებისთვის • {formatPricingSummary()}
                           </p>
                           <span className="text-[10px] text-slate-500 mt-1 block">
                             სტატუსი: {spotB.status === 'available' ? 'თავისუფალია ✓' : 'დაკავებულია'}
@@ -828,14 +1005,81 @@ export const StaffTerminalModal: React.FC<StaffTerminalModalProps> = ({
                       </div>
                     </div>
 
-                    {/* TWO CONFIDENTIAL FIELDS: FIRST & LAST NAME + PHONE NUMBER */}
+                    {/* 1. LICENSE PLATE INPUT (WITH INSTANT AUTO-LOOKUP) */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                          <Car className="w-3.5 h-3.5 text-amber-400" />
+                          <span>ავტომობილის სახელმწიფო ნომერი:</span>
+                        </label>
+                        <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3" />
+                          <span>ჩაწერეთ ნომერი ➔ სახელი ავტომატურად ამოვარდება</span>
+                        </span>
+                      </div>
+
+                      <input
+                        type="text"
+                        id="new-ticket-plate-input"
+                        required
+                        value={newPlate}
+                        onChange={(e) => handlePlateChange(e.target.value)}
+                        placeholder="შეიყვანეთ ნომერი (მაგ: GE-482-TB, EMP-777-GE, AA-100-BB)..."
+                        className="w-full px-4 py-3 bg-slate-900 border-2 border-slate-700 focus:border-amber-400 rounded-xl text-base font-mono font-bold text-white placeholder-slate-500 focus:outline-none tracking-wider shadow-inner"
+                      />
+
+                      {/* Quick test plates */}
+                      <div className="flex items-center gap-1.5 mt-2 flex-wrap text-[11px]">
+                        <span className="text-slate-500">სწრაფი ნომრები:</span>
+                        {['GE-482-TB', 'VIP-999-GE', 'EMP-777-GE', 'AA-100-BB', 'TB-890-XX'].map((plate) => (
+                          <button
+                            key={plate}
+                            type="button"
+                            onClick={() => handlePlateChange(plate)}
+                            className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-teal-300 font-mono text-[10px] border border-slate-700 transition-colors font-bold"
+                          >
+                            {plate}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* AUTO-MATCH POPUP ALERT (IF DRIVER FOUND IN DIRECTORY) */}
+                    {autoMatchedDriver && (
+                      <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-slate-900 border-2 border-emerald-500/60 shadow-lg flex items-center justify-between gap-3 animate-in fade-in duration-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center justify-center font-bold shrink-0">
+                            <UserCheck className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-extrabold text-white">
+                                {autoMatchedDriver.fullName}
+                              </span>
+                              <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-500 text-slate-950 uppercase font-sans">
+                                ✓ ავტომატურად ამოგდებული
+                              </span>
+                            </div>
+                            <p className="text-xs text-emerald-400 font-mono mt-0.5">
+                              {autoMatchedDriver.plateNumber} • {autoMatchedDriver.phone || 'ტელეფონი არაა'} • {autoMatchedDriver.notes || 'ბაზიდან'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <span className="text-[11px] font-bold text-emerald-300 bg-emerald-950 px-2.5 py-1 rounded-xl border border-emerald-700 shrink-0">
+                          სახელი შევსებულია ✓
+                        </span>
+                      </div>
+                    )}
+
+                    {/* 2. CONFIDENTIAL FIELDS: FIRST & LAST NAME + PHONE NUMBER */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                       {/* Driver Name & Surname */}
                       <div>
                         <div className="flex items-center justify-between mb-1.5">
                           <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
                             <User className="w-3.5 h-3.5 text-teal-400" />
-                            <span>სახელი და გვარი:</span>
+                            <span>მძღოლის სახელი და გვარი:</span>
                           </label>
                           <span className="text-[10px] font-bold text-teal-400 bg-teal-500/10 px-1.5 py-0.5 rounded border border-teal-500/20">
                             🔒 კონფიდენციალური
@@ -872,42 +1116,6 @@ export const StaffTerminalModal: React.FC<StaffTerminalModalProps> = ({
                           placeholder="+995 599 12 34 56"
                           className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs font-mono font-medium text-white placeholder-slate-500 focus:outline-none focus:border-teal-400"
                         />
-                      </div>
-                    </div>
-
-                    {/* LICENSE PLATE INPUT */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                          <Car className="w-3.5 h-3.5 text-amber-400" />
-                          <span>ავტომობილის სახელმწიფო ნომერი:</span>
-                        </label>
-                        <span className="text-[11px] text-slate-500 font-mono">მაგ: AA-123-BB</span>
-                      </div>
-
-                      <input
-                        type="text"
-                        id="new-ticket-plate-input"
-                        required
-                        value={newPlate}
-                        onChange={(e) => setNewPlate(e.target.value.toUpperCase())}
-                        placeholder="შეიყვანეთ ნომერი (მაგ: TB-882-GE)"
-                        className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-base font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 tracking-wider"
-                      />
-
-                      {/* Quick test plates */}
-                      <div className="flex items-center gap-1.5 mt-2 flex-wrap text-[11px]">
-                        <span className="text-slate-500">სწრაფი ნომრები:</span>
-                        {['GE-777-TB', 'KA-404-ST', 'AA-909-BB', 'TX-101-GE'].map((plate) => (
-                          <button
-                            key={plate}
-                            type="button"
-                            onClick={() => setNewPlate(plate)}
-                            className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-[10px] border border-slate-700"
-                          >
-                            {plate}
-                          </button>
-                        ))}
                       </div>
                     </div>
 
@@ -1008,13 +1216,13 @@ export const StaffTerminalModal: React.FC<StaffTerminalModalProps> = ({
                           გასვლის პროცედურა: დაასკანერეთ შტრიხკოდი/ქიუარი ან შეიყვანეთ კოდი
                         </span>
                         <span className="text-slate-400">
-                          სისტემა ავტომატურად დაითვლის პარკირების დროს (1სთ=1₾, 3სთ=2₾, 24სთ=5₾), დააფიქსირებს ბაზაში გადახდას და გაგიხსნით შლაგბაუმის მანუალურ ღილაკს.
+                          სისტემა ავტომატურად დაითვლის პარკირების დროს ({formatPricingSummary()}), დააფიქსირებს ბაზაში გადახდას და გაგიხსნით შლაგბაუმის მანუალურ ღილაკს.
                         </span>
                       </div>
                     </div>
 
                     <div className="font-mono text-[11px] text-emerald-400 bg-emerald-950/40 px-3 py-1.5 rounded-xl border border-emerald-800/40 shrink-0">
-                      ტარიფი: 1სთ: 1₾ | 3სთ: 2₾ | 24სთ: 5₾
+                      ტარიფი: {formatPricingSummary()}
                     </div>
                   </div>
 
@@ -1023,14 +1231,23 @@ export const StaffTerminalModal: React.FC<StaffTerminalModalProps> = ({
                     {/* LEFT COL: SCANNER / SEARCH INPUT & ACTIVE TICKETS (5 cols) */}
                     <div className="lg:col-span-5 space-y-4">
                       {/* Search / Scan Box */}
-                      <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-4">
-                        <label className="text-xs font-bold text-slate-300 block mb-2 flex items-center justify-between">
-                          <span className="flex items-center gap-1.5">
+                      <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                             <ScanLine className="w-4 h-4 text-emerald-400" />
                             <span>შტრიხკოდის / QR / კოდის შეყვანა:</span>
-                          </span>
-                          <span className="text-[10px] text-slate-500">სკანერი ან კლავიატურა</span>
-                        </label>
+                          </label>
+                          {onOpenScannerModal && (
+                            <button
+                              type="button"
+                              onClick={onOpenScannerModal}
+                              className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 transition-all flex items-center gap-1 shadow-sm"
+                            >
+                              <Camera className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>📷 QR/შტრიხკოდის სკანერი</span>
+                            </button>
+                          )}
+                        </div>
 
                         <div className="relative">
                           <input
@@ -1237,70 +1454,111 @@ export const StaffTerminalModal: React.FC<StaffTerminalModalProps> = ({
                                 <span className="text-xs font-bold text-slate-300 block mb-2">
                                   გადახდის მეთოდის არჩევა:
                                 </span>
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                   <button
                                     type="button"
                                     onClick={() => setPaymentMethod('cash')}
-                                    className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-bold ${
+                                    className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 transition-all text-xs font-bold ${
                                       paymentMethod === 'cash'
                                         ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500 shadow-sm'
                                         : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
                                     }`}
                                   >
-                                    <Banknote className="w-4 h-4" />
-                                    <span>ნაღდი ფული</span>
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => setPaymentMethod('pos')}
-                                    className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-bold ${
-                                      paymentMethod === 'pos' || paymentMethod === 'card'
-                                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500 shadow-sm'
-                                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
-                                    }`}
-                                  >
-                                    <CreditCard className="w-4 h-4" />
-                                    <span>საბანკო ბარათი (POS)</span>
+                                    <Banknote className="w-4 h-4 text-emerald-400" />
+                                    <span>💵 ქეშით (ნაღდი)</span>
                                   </button>
 
                                   <button
                                     type="button"
                                     onClick={() => setPaymentMethod('bog')}
-                                    className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-bold ${
+                                    className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 transition-all text-xs font-bold ${
                                       paymentMethod === 'bog'
+                                        ? 'bg-orange-500/20 text-orange-300 border-orange-500 shadow-sm'
+                                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
+                                    }`}
+                                  >
+                                    <span className="w-4 h-4 rounded text-[9px] font-black bg-orange-500/30 text-orange-400 flex items-center justify-center">
+                                      BOG
+                                    </span>
+                                    <span>🟧 საქ (საქართველო)</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setPaymentMethod('tbc')}
+                                    className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 transition-all text-xs font-bold ${
+                                      paymentMethod === 'tbc'
+                                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500 shadow-sm'
+                                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
+                                    }`}
+                                  >
+                                    <span className="w-4 h-4 rounded text-[9px] font-black bg-cyan-500/30 text-cyan-400 flex items-center justify-center">
+                                      TBC
+                                    </span>
+                                    <span>🟦 თიბისი (TBC)</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setPaymentMethod('pos')}
+                                    className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 transition-all text-xs font-bold ${
+                                      paymentMethod === 'pos' || paymentMethod === 'card'
                                         ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500 shadow-sm'
                                         : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
                                     }`}
                                   >
-                                    <Smartphone className="w-4 h-4" />
-                                    <span>BOG / TBC QR</span>
+                                    <CreditCard className="w-4 h-4 text-teal-400" />
+                                    <span>💳 სხვა ბარათი</span>
                                   </button>
                                 </div>
                               </div>
 
                               {/* Cash Calculator Input if Cash */}
                               {paymentMethod === 'cash' && (
-                                <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 flex items-center justify-between gap-3">
-                                  <div className="flex-1">
-                                    <label className="text-[11px] text-slate-400 block mb-1">
-                                      მიღებული ნაღდი თანხა (₾):
-                                    </label>
-                                    <input
-                                      type="number"
-                                      step="0.5"
-                                      min={currentCalc.amountDue}
-                                      value={cashReceived}
-                                      onChange={(e) => setCashReceived(e.target.value)}
-                                      placeholder={`${currentCalc.amountDue.toFixed(2)}`}
-                                      className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-white"
-                                    />
-                                  </div>
-                                  <div className="text-right shrink-0">
-                                    <span className="text-[11px] text-slate-400 block">ხურდა დასაბრუნებელი:</span>
-                                    <span className="font-mono font-black text-sm text-teal-300">
-                                      {changeDue.toFixed(2)} ₾
-                                    </span>
+                                <div className="p-3.5 bg-slate-900 rounded-xl border border-slate-800 space-y-2">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div className="flex-1">
+                                      <label className="text-[11px] text-slate-400 block mb-1">
+                                        მიღებული ნაღდი თანხა (₾):
+                                      </label>
+                                      <input
+                                        type="number"
+                                        step="0.5"
+                                        min={currentCalc.amountDue}
+                                        value={cashReceived}
+                                        onChange={(e) => setCashReceived(e.target.value)}
+                                        placeholder={`${currentCalc.amountDue.toFixed(2)}`}
+                                        className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-white"
+                                      />
+                                    </div>
+
+                                    {/* Quick cash denomination buttons */}
+                                    <div className="flex items-center gap-1 flex-wrap self-end">
+                                      <button
+                                        type="button"
+                                        onClick={() => setCashReceived(currentCalc.amountDue.toString())}
+                                        className="px-2 py-1 rounded text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700"
+                                      >
+                                        ზუსტი ({currentCalc.amountDue.toFixed(2)}₾)
+                                      </button>
+                                      {[5, 10, 20, 50].map((amt) => (
+                                        <button
+                                          key={amt}
+                                          type="button"
+                                          onClick={() => setCashReceived(amt.toString())}
+                                          className="px-2 py-1 rounded text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
+                                        >
+                                          {amt}₾
+                                        </button>
+                                      ))}
+                                    </div>
+
+                                    <div className="text-right shrink-0 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 min-w-[120px]">
+                                      <span className="text-[10px] text-slate-400 block">ხურდა:</span>
+                                      <span className="font-mono font-black text-sm text-teal-300">
+                                        {changeDue.toFixed(2)} ₾
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
                               )}
@@ -1407,6 +1665,478 @@ export const StaffTerminalModal: React.FC<StaffTerminalModalProps> = ({
                         </div>
                       )}
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* TAB 4: PAST & HISTORICAL RECEIPTS ARCHIVE (გასული ქვითრები, გუშინდელი და ისტორია) */}
+              {/* ========================================================================= */}
+              {activeTab === 'history' && (
+                <div className="space-y-5 animate-fade-in">
+                  {/* Top Archive Information Banner */}
+                  <div className="bg-slate-950/90 border border-sky-500/30 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/30 shrink-0">
+                        <History className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-black text-sm text-white">
+                            გასული ქვითრების არქივი & ისტორია
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30">
+                            სრული რეესტრი
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          აქ შეგიძლიათ მოიძიოთ გუშინდელი ან ნებისმიერი წინა დღის გასული მანქანის ქვითარი, გადაამოწმოთ გადახდის მეთოდი (ქეში / საქ / თიბისი) და ნახოთ/ამობეჭდოთ ქვითარი.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {onOpenScannerModal && (
+                        <button
+                          type="button"
+                          onClick={onOpenScannerModal}
+                          className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors flex items-center gap-1.5"
+                        >
+                          <ScanLine className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>ქვითრის სკანერი</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Summary Metric Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3.5">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
+                        ნაპოვნი ქვითრები
+                      </span>
+                      <span className="text-xl sm:text-2xl font-mono font-black text-white">
+                        {filteredHistoricalTickets.length}
+                      </span>
+                      <span className="text-[10px] text-slate-500 block mt-0.5">
+                        სულ არქივში: {completedOrPaidTickets.length}
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3.5">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
+                        გადახდილი თანხა
+                      </span>
+                      <span className="text-xl sm:text-2xl font-mono font-black text-emerald-400">
+                        {totalHistoricalRevenue.toFixed(2)} ₾
+                      </span>
+                      <span className="text-[10px] text-slate-500 block mt-0.5">
+                        შერჩეულ პერიოდში
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-950/80 border border-amber-500/30 rounded-2xl p-3.5 bg-amber-500/5">
+                      <span className="text-[10px] uppercase font-bold text-amber-300 block mb-1 flex items-center gap-1">
+                        <span>⭐ გუშინდელი ქვითრები</span>
+                      </span>
+                      <span className="text-xl sm:text-2xl font-mono font-black text-amber-400">
+                        {yesterdayTicketsCount}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHistoryDateFilter('yesterday');
+                          setCustomHistoryDate('');
+                        }}
+                        className="text-[10px] text-amber-300/80 hover:text-amber-200 underline block mt-0.5 text-left"
+                      >
+                        მხოლოდ გუშინდელის ფილტრი ➔
+                      </button>
+                    </div>
+
+                    <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3.5">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
+                        დღევანდელი გასვლები
+                      </span>
+                      <span className="text-xl sm:text-2xl font-mono font-black text-teal-400">
+                        {todayTicketsCount}
+                      </span>
+                      <span className="text-[10px] text-slate-500 block mt-0.5">
+                        დღეს დასრულებული
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* QUICK DATE FILTERS ROW */}
+                  <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-3.5 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-bold text-slate-300 mr-1 flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5 text-sky-400" />
+                          <span>თარიღი:</span>
+                        </span>
+
+                        {/* YESTERDAY BUTTON (HIGHLIGHTED) */}
+                        <button
+                          type="button"
+                          id="history-filter-yesterday-btn"
+                          onClick={() => {
+                            setHistoryDateFilter('yesterday');
+                            setCustomHistoryDate('');
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                            historyDateFilter === 'yesterday'
+                              ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
+                              : 'bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/40'
+                          }`}
+                        >
+                          <span>⭐ გუშინ ({yesterdayTicketsCount})</span>
+                        </button>
+
+                        {/* TODAY BUTTON */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHistoryDateFilter('today');
+                            setCustomHistoryDate('');
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                            historyDateFilter === 'today'
+                              ? 'bg-sky-500 text-slate-950'
+                              : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700'
+                          }`}
+                        >
+                          დღეს ({todayTicketsCount})
+                        </button>
+
+                        {/* LAST 7 DAYS */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHistoryDateFilter('last7days');
+                            setCustomHistoryDate('');
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                            historyDateFilter === 'last7days'
+                              ? 'bg-sky-500 text-slate-950'
+                              : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700'
+                          }`}
+                        >
+                          ბოლო 7 დღე
+                        </button>
+
+                        {/* ALL TIME */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHistoryDateFilter('all');
+                            setCustomHistoryDate('');
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                            historyDateFilter === 'all'
+                              ? 'bg-sky-500 text-slate-950'
+                              : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700'
+                          }`}
+                        >
+                          ყველა ({completedOrPaidTickets.length})
+                        </button>
+                      </div>
+
+                      {/* Custom Date Input */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-slate-400">ან კონკრეტული დღე:</span>
+                        <input
+                          type="date"
+                          id="history-custom-date-picker"
+                          value={customHistoryDate}
+                          onChange={(e) => {
+                            setCustomHistoryDate(e.target.value);
+                            if (e.target.value) {
+                              setHistoryDateFilter('custom');
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-sky-400 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    {/* SEARCH & PAYMENT FILTER ROW */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-2 border-t border-slate-800/80">
+                      {/* Search Query */}
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          id="history-search-input"
+                          value={historySearchQuery}
+                          onChange={(e) => setHistorySearchQuery(e.target.value)}
+                          placeholder="ძებნა: მანქანის ნომერი (მაგ: AA-555, CC-777), მძღოლი, ტელეფონი, ქვითრის №..."
+                          className="w-full pl-9 pr-8 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-400"
+                        />
+                        <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
+                        {historySearchQuery && (
+                          <button
+                            onClick={() => setHistorySearchQuery('')}
+                            className="absolute right-2.5 top-2 text-slate-400 hover:text-white text-xs"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Payment Method Filter Pills */}
+                      <div className="flex items-center gap-1.5 overflow-x-auto select-none py-0.5">
+                        <span className="text-[11px] text-slate-400 font-bold shrink-0">მეთოდი:</span>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryPaymentFilter('all')}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shrink-0 ${
+                            historyPaymentFilter === 'all'
+                              ? 'bg-slate-700 text-white'
+                              : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          ყველა
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryPaymentFilter('bog')}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shrink-0 flex items-center gap-1 ${
+                            historyPaymentFilter === 'bog'
+                              ? 'bg-amber-500 text-slate-950 font-black'
+                              : 'bg-amber-950/40 text-amber-300 border border-amber-500/30'
+                          }`}
+                        >
+                          <span>საქ (BOG)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryPaymentFilter('tbc')}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shrink-0 flex items-center gap-1 ${
+                            historyPaymentFilter === 'tbc'
+                              ? 'bg-cyan-500 text-slate-950 font-black'
+                              : 'bg-cyan-950/40 text-cyan-300 border border-cyan-500/30'
+                          }`}
+                        >
+                          <span>თიბისი (TBC)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryPaymentFilter('cash')}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shrink-0 flex items-center gap-1 ${
+                            historyPaymentFilter === 'cash'
+                              ? 'bg-emerald-500 text-slate-950 font-black'
+                              : 'bg-emerald-950/40 text-emerald-300 border border-emerald-500/30'
+                          }`}
+                        >
+                          <span>ქეში</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryPaymentFilter('pos')}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shrink-0 ${
+                            historyPaymentFilter === 'pos'
+                              ? 'bg-indigo-500 text-white font-black'
+                              : 'bg-indigo-950/40 text-indigo-300 border border-indigo-500/30'
+                          }`}
+                        >
+                          POS
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* HISTORICAL RECEIPTS LIST */}
+                  <div className="space-y-3">
+                    {filteredHistoricalTickets.length === 0 ? (
+                      <div className="bg-slate-950/60 border border-dashed border-slate-800 rounded-3xl p-10 text-center text-slate-500 space-y-3">
+                        <History className="w-10 h-10 text-slate-600 mx-auto" />
+                        <div>
+                          <span className="text-sm font-bold text-slate-300 block">
+                            გასული ქვითარი ვერ მოიძებნა
+                          </span>
+                          <span className="text-xs text-slate-500 block mt-1 max-w-md mx-auto">
+                            მითითებული თარიღის ან ფილტრის მიხედვით ქვითარი არ არსებობს. სცადეთ ფილტრის გასუფთავება ან სხვა თარიღის არჩევა.
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHistoryDateFilter('all');
+                            setCustomHistoryDate('');
+                            setHistorySearchQuery('');
+                            setHistoryPaymentFilter('all');
+                          }}
+                          className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors"
+                        >
+                          ფილტრების გასუფთავება (ყველას ნახვა)
+                        </button>
+                      </div>
+                    ) : (
+                      filteredHistoricalTickets.map((t) => {
+                        const entryDate = new Date(t.entryTime);
+                        const exitDate = t.exitTime ? new Date(t.exitTime) : t.paidAt ? new Date(t.paidAt) : null;
+                        
+                        const isYesterdayTicket = isTicketOnDate(t, yesterdayDateString);
+                        const isTodayTicket = isTicketOnDate(t, todayDateString);
+
+                        return (
+                          <div
+                            key={t.ticketId}
+                            className={`p-4 rounded-2xl border transition-all ${
+                              isYesterdayTicket
+                                ? 'bg-gradient-to-r from-slate-950 via-slate-950 to-amber-950/20 border-amber-500/40 hover:border-amber-400'
+                                : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+                            }`}
+                          >
+                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                              {/* Left: Plate, Driver, Period */}
+                              <div className="flex items-start gap-3.5">
+                                {/* Georgian License Plate Badge */}
+                                <div className="inline-flex items-stretch border border-slate-700 rounded-lg overflow-hidden bg-white shadow-sm shrink-0">
+                                  <div className="bg-blue-700 text-white flex flex-col items-center justify-between px-1 py-0.5 select-none">
+                                    <span className="text-[7px] leading-none">★</span>
+                                    <span className="text-[8px] font-black leading-none">GE</span>
+                                  </div>
+                                  <div className="px-2.5 py-1 font-mono font-black text-sm text-slate-950 tracking-wider select-none">
+                                    {t.plateNumber}
+                                  </div>
+                                </div>
+
+                                {/* Driver & Ticket details */}
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-sm text-white">
+                                      {t.driverFullName || 'კლიენტი'}
+                                    </span>
+
+                                    {/* Date Highlight Badge */}
+                                    {isYesterdayTicket && (
+                                      <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 uppercase">
+                                        ⭐ გუშინდელი ქვითარი
+                                      </span>
+                                    )}
+                                    {isTodayTicket && (
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                                        დღეს გასული
+                                      </span>
+                                    )}
+
+                                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800">
+                                      {t.spotId} პარკინგი
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
+                                    {t.driverPhone && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCopyPhone(t.driverPhone!, t.ticketId)}
+                                        className="flex items-center gap-1 text-slate-300 hover:text-white font-mono"
+                                        title="ტელეფონის კოპირება"
+                                      >
+                                        <Phone className="w-3 h-3 text-teal-400" />
+                                        <span>{t.driverPhone}</span>
+                                        {copiedPhoneId === t.ticketId && (
+                                          <span className="text-[9px] text-teal-400">✓ კოპირებულია</span>
+                                        )}
+                                      </button>
+                                    )}
+                                    <span>•</span>
+                                    <span className="font-mono text-slate-400 text-[11px]">
+                                      ქვითარი: <strong className="text-slate-200">#{t.ticketId}</strong>
+                                    </span>
+                                    <span>•</span>
+                                    <span className="font-mono text-slate-400 text-[11px]">
+                                      შტრიხკოდი: {t.barcode}
+                                    </span>
+                                  </div>
+
+                                  {/* Entry / Exit Dates */}
+                                  <div className="flex items-center gap-3 text-[11px] text-slate-400 pt-1 font-mono flex-wrap">
+                                    <span className="flex items-center gap-1">
+                                      <Clock className="w-3 h-3 text-emerald-400" />
+                                      <span>შესვლა: {entryDate.toLocaleDateString('ka-GE')} {entryDate.toLocaleTimeString('ka-GE', { hour: '2-digit', minute: '2-digit' })}</span>
+                                    </span>
+                                    {exitDate && (
+                                      <>
+                                        <span>➔</span>
+                                        <span className="flex items-center gap-1 text-rose-300">
+                                          <ArrowRight className="w-3 h-3 text-rose-400" />
+                                          <span>გასვლა: {exitDate.toLocaleDateString('ka-GE')} {exitDate.toLocaleTimeString('ka-GE', { hour: '2-digit', minute: '2-digit' })}</span>
+                                        </span>
+                                      </>
+                                    )}
+                                    <span>•</span>
+                                    <span className="font-bold text-slate-300">
+                                      ხანგრძლივობა: {t.durationFormatted || '1 სთ'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Right: Payment badge, amount, and actions */}
+                              <div className="flex items-center justify-between lg:justify-end gap-3.5 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-800">
+                                <div className="text-left lg:text-right">
+                                  <div className="text-lg font-mono font-black text-emerald-400">
+                                    {t.amountPaid !== undefined ? `${t.amountPaid.toFixed(2)} ₾` : '0.00 ₾'}
+                                  </div>
+
+                                  {/* Bank Payment Method Badge */}
+                                  <div className="mt-0.5">
+                                    {t.paymentMethod === 'bog' ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                        <span>საქართველოს ბანკი (საქ / BOG)</span>
+                                      </span>
+                                    ) : t.paymentMethod === 'tbc' ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                                        <span>თიბისი ბანკი (თიბისი / TBC)</span>
+                                      </span>
+                                    ) : t.paymentMethod === 'cash' ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                        <span>ნაღდი ფული (ქეში)</span>
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                                        <CreditCard className="w-3 h-3 text-indigo-400" />
+                                        <span>საბანკო POS ბარათი</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Action Buttons: View Receipt, Copy */}
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    id={`view-past-receipt-${t.ticketId}`}
+                                    onClick={() => onViewPrintReceipt(t)}
+                                    className="px-3 py-2 rounded-xl text-xs font-bold bg-teal-500 hover:bg-teal-400 text-slate-950 transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
+                                    title="გასული ქვითრის ნახვა & ბეჭდვა"
+                                  >
+                                    <FileText className="w-3.5 h-3.5" />
+                                    <span>ქვითრის ნახვა</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard?.writeText(t.ticketId);
+                                    }}
+                                    className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors shrink-0"
+                                    title="ქვითრის ID კოპირება"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               )}

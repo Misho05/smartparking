@@ -21,7 +21,8 @@ import {
 import confetti from 'canvas-confetti';
 import { ParkingSpot, Reservation, VehicleType, Language } from '../types';
 import { translations } from '../utils/translations';
-import { OFFICIAL_PRICING_TIERS, calculateParkingPrice } from '../utils/pricing';
+import { usePricingConfig, calculateParkingPrice } from '../utils/pricing';
+import { saveDriverProfile } from '../utils/driverDirectory';
 
 interface ReservationModalProps {
   spot: ParkingSpot;
@@ -44,6 +45,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
 
   // Steps: 1: Details, 2: Payment, 3: Completed Pass
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const { tiers: pricingTiers } = usePricingConfig();
 
   // Form fields
   const [vehiclePlate, setVehiclePlate] = useState(initialPlate || 'GE-482-TB');
@@ -108,6 +110,15 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
         createdAt: now.toISOString(),
         qrCodeData: `SMARTPARK|${resId}|${spot.id}|${vehiclePlate.toUpperCase()}`,
       };
+
+      // Save driver profile so staff automatically gets their name when searching or entering plate
+      saveDriverProfile({
+        plateNumber: vehiclePlate.toUpperCase().trim(),
+        fullName: driverName.trim(),
+        phone: driverPhone.trim(),
+        category: 'online_booking',
+        notes: `ონლაინ ჯავშანი #${resId} • ${durationHours} სთ • ${totalAmount.toFixed(2)} ₾`,
+      });
 
       setCompletedReservation(newReservation);
       setStep(3);
@@ -264,7 +275,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                 </div>
 
                 <div className="grid grid-cols-3 gap-2.5">
-                  {OFFICIAL_PRICING_TIERS.map((tier) => {
+                  {pricingTiers.map((tier) => {
                     const isSelected = durationHours === tier.hours;
                     return (
                       <button
@@ -300,20 +311,23 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                 {/* Additional intermediate hours buttons */}
                 <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-slate-800/80">
                   <span className="text-[11px] text-slate-400 shrink-0">სხვა დრო:</span>
-                  {[2, 6, 12].map((h) => (
-                    <button
-                      key={h}
-                      type="button"
-                      onClick={() => setDurationHours(h)}
-                      className={`flex-1 py-1 rounded-lg text-xs font-mono font-medium border transition-all ${
-                        durationHours === h
-                          ? 'bg-emerald-600 text-white border-emerald-500 font-bold'
-                          : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
-                      }`}
-                    >
-                      {h}სთ ({calculateParkingPrice(h).toFixed(2)}₾)
-                    </button>
-                  ))}
+                  {[2, 6, 12, 18]
+                    .filter((h) => !pricingTiers.some((t) => t.hours === h))
+                    .slice(0, 3)
+                    .map((h) => (
+                      <button
+                        key={h}
+                        type="button"
+                        onClick={() => setDurationHours(h)}
+                        className={`flex-1 py-1 rounded-lg text-xs font-mono font-medium border transition-all ${
+                          durationHours === h
+                            ? 'bg-emerald-600 text-white border-emerald-500 font-bold'
+                            : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+                        }`}
+                      >
+                        {h}სთ ({calculateParkingPrice(h).toFixed(2)}₾)
+                      </button>
+                    ))}
                 </div>
               </div>
 

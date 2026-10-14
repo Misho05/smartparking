@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, CreditCard, UserCheck, Camera, Database, Tag } from 'lucide-react';
+import { ShieldCheck, CreditCard, UserCheck, Camera, Database, Tag, Users } from 'lucide-react';
 import { ParkingSpot, Language } from '../types';
 import { translations } from '../utils/translations';
 
@@ -8,6 +8,7 @@ interface StatsBarProps {
   employeesCount: number;
   paidCustomersCount: number;
   onOpenManualDatabase: () => void;
+  onOpenCustomerDatabase?: () => void;
   lang: Language;
 }
 
@@ -16,6 +17,7 @@ export const StatsBar: React.FC<StatsBarProps> = ({
   employeesCount,
   paidCustomersCount,
   onOpenManualDatabase,
+  onOpenCustomerDatabase,
   lang,
 }) => {
   const t = translations[lang];
@@ -130,27 +132,52 @@ export const StatsBar: React.FC<StatsBarProps> = ({
         </div>
       </div>
 
-      {/* Manual Database Quick Trigger */}
-      <div
-        onClick={onOpenManualDatabase}
-        className="bg-slate-900/70 hover:bg-slate-900 border border-slate-800 hover:border-teal-500/40 rounded-2xl p-4 flex items-center justify-between cursor-pointer transition-all group"
-      >
-        <div className="flex items-center gap-3.5">
-          <div className="p-2.5 rounded-xl bg-teal-500/10 border border-teal-500/20 text-teal-400 shrink-0 group-hover:scale-105 transition-transform">
-            <Database className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-slate-200">მანუალური ბაზა</span>
-              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-teal-300">
-                {employeesCount + paidCustomersCount}
+      {/* Databases Quick Actions (თანამშრომელთა ბაზა & მომხმარებელთა ბაზა) */}
+      <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-3 flex flex-col justify-between gap-2">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={onOpenManualDatabase}
+            className="flex-1 flex items-center gap-2 p-1.5 rounded-xl bg-teal-950/40 hover:bg-teal-900/40 border border-teal-500/30 hover:border-teal-400 text-left transition-all group"
+            title="თანამშრომელთა ბაზის გახსნა"
+          >
+            <div className="p-1 rounded-lg bg-teal-500/10 text-teal-400 shrink-0">
+              <UserCheck className="w-3.5 h-3.5" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[11px] font-bold text-teal-300 block truncate">
+                თანამშრომლები
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono">
+                {employeesCount} საშვი
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              თანამშრომელთა & ფასიანი საშვების მართვა
-            </p>
-          </div>
+          </button>
+
+          <span className="text-slate-700 px-1 font-mono">|</span>
+
+          <button
+            type="button"
+            onClick={onOpenCustomerDatabase || onOpenManualDatabase}
+            className="flex-1 flex items-center gap-2 p-1.5 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/40 border border-emerald-500/30 hover:border-emerald-400 text-left transition-all group"
+            title="მომხმარებელთა ბაზის გახსნა"
+          >
+            <div className="p-1 rounded-lg bg-emerald-500/10 text-emerald-400 shrink-0">
+              <Users className="w-3.5 h-3.5" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[11px] font-bold text-emerald-300 block truncate">
+                მომხმარებლები
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono">
+                {paidCustomersCount} ჩანაწერი
+              </span>
+            </div>
+          </button>
         </div>
+        <p className="text-[10px] text-slate-400 text-center font-medium">
+          A და B პარკინგის განცალკევებული ბაზები
+        </p>
       </div>
     </div>
   );
